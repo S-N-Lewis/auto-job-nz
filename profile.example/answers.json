@@ -1,0 +1,25 @@
+{
+  "_comment": "复制此目录为 profile/ 并填入你自己的信息。仓库永不包含真实数据。",
+  "work_rights_options": {
+    "seek_zh": "学生签证，工作时间没有限制（例如博士生）",
+    "seek_en": "I have a student visa with no restrictions on work hours (e.g. doctoral student)",
+    "generic": "Available to work full-time; no visa restrictions"
+  },
+  "answers": {
+    "salary_expectation": "<按目标岗位填，如 45000-55000>",
+    "years_experience": "More than 5 years",
+    "notice_period": "No / Immediately available",
+    "criminal_conviction": "No",
+    "weekend_availability": "Yes",
+    "public_holiday_availability": "Yes",
+    "how_did_you_hear": "SEEK"
+  },
+  "cv_by_role_type": {
+    "retail_seasonal": "cv/retail.pdf",
+    "administration": "cv/admin.pdf",
+    "student_services": "cv/student-services.pdf",
+    "default": "cv/general.pdf"
+  },
+  "regions": ["Auckland CBD", "North Shore", "South Auckland", "West Auckland", "Manukau"],
+  "seasonal_window": {"start": "11-01", "end": "12-31", "labels": ["christmas casual", "seasonal", "holiday casual"]}
+}

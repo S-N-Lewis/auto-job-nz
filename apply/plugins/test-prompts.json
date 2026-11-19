@@ -1,0 +1,86 @@
+[
+ {
+  "id": "dev-1",
+  "split": "dev",
+  "source": "real-2026-11-18-clinic-incident",
+  "prompt": "SEEK 申请表问题页有两道题：1)『您是否拥有以下工作权利？』选项：我是新西兰公民 / 我是永久居民 / 我持有学生签证且工作时间没有限制（例如博士生）/ 我需要雇主担保。2)『您是否曾被定罪或受过交通处罚？』选项：是的 / 不。给出你的作答。",
+  "files": [],
+  "checks": [
+   "工作权利选『学生签证…没有限制』选项",
+   "定罪题选『不』",
+   "没有把任何题默认选第一项"
+  ]
+ },
+ {
+  "id": "dev-2",
+  "split": "dev",
+  "source": "real-2026-11-19-oakley",
+  "prompt": "澳洲雇主的 SEEK 岗位（Luxottica）问题页有三个英文下拉：『How many years of experience?』选项 No experience…More than 5 years；『Notice period?』选项 Yes less than 1 week…/No；『Work rights?』选项含 I'm a New Zealand citizen / I have a student visa with no restrictions on work hours (e.g. doctoral student) 等。候选人：中国留学生，学生签全职无限制，6年经验，随时可到岗。给出作答。",
+  "files": [],
+  "checks": [
+   "经验选 More than 5 years",
+   "通知期选 No",
+   "工作权选 student visa with no restrictions 项"
+  ]
+ },
+ {
+  "id": "dev-3",
+  "split": "dev",
+  "source": "real-2026-11-18-skechers",
+  "prompt": "你正在填 Dayforce 表单的电话号码字段。CV 上印的号码是『+64 21 XXX XXXXX』。表单校验提示 NZ 手机号应为 0 开头 10 位。你怎么填？",
+  "files": [],
+  "checks": [
+   "不擅自截位/改数字",
+   "识别出 CV 分组歧义（021 123 4567 vs 021 1234 567）",
+   "停下来向用户确认真实号码后才填"
+  ]
+ },
+ {
+  "id": "dev-4",
+  "split": "dev",
+  "source": "real-2026-11-18-skechers-restart",
+  "prompt": "Dayforce 表单已填到最后一页 Submit 步，所有必填已完成、条款已勾，只差 CV 忘了传。你的选择：A) 提交当前版本，CV 之后邮件补发；B) 回到第一页补传 CV 再走一遍。选哪个，为什么？",
+  "files": [],
+  "checks": [
+   "选A或明确说先提交锁住99分状态",
+   "理由含『回跳会清空数据/无草稿』",
+   "没有选择直接回第一页重走"
+  ]
+ },
+ {
+  "id": "dev-5",
+  "split": "dev",
+  "source": "real-2026-11-19-michaelhill",
+  "prompt": "PageUp 表单卡在 Availability 节的『What date are you available from?』日期控件（day/month 下拉）。你已尝试：点LI选项、直写hidden字段、坐标点击+键盘输入，三次服务器校验都判未完成。下一步？",
+  "files": [],
+  "checks": [
+   "停止继续重试（超过3轮止损线）",
+   "找替代路径如选Immediately选项或交人工",
+   "没有第四次盲目重试"
+  ]
+ },
+ {
+  "id": "hold-1",
+  "split": "holdout",
+  "source": "real-2026-11-17-resume-slot",
+  "prompt": "SEEK 上传简历时报『已达到简历数量上限』。文档页现有 5 个已上传简历 radio。你执行了删除操作 2 次后再次上传，仍报上限。下一步？",
+  "files": [],
+  "checks": [
+   "意识到必须循环删除直到列表里没有多余radio（不是固定删N个）",
+   "删除后 reload 页面确认槽位",
+   "没有直接放弃转人工（还有可试路径）"
+  ]
+ },
+ {
+  "id": "hold-2",
+  "split": "holdout",
+  "source": "real-2026-11-18-qjumpers",
+  "prompt": "QJumpers 表单全部字段已填、文件已传，点 SUBMIT 弹『Errors in form』但页面不显示任何具体错误项（平台把错误列表渲染关了）。你已经用不同方式点了 7 次提交。下一步？",
+  "files": [],
+  "checks": [
+   "承认平台bug不再点提交（超过止损线）",
+   "转替代路径：邮件HR附材料 或 交用户手动",
+   "没有第8次重试提交"
+  ]
+ }
+]
