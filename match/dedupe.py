@@ -14,7 +14,8 @@ DEFAULT_LEDGER = Path("ledger.jsonl")
 
 
 def _norm(s: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", (s or "").lower())[:40]
+    # 保留中日韩字符：纯中文雇主名若被删空，不同公司会塌成同一个 key 造成误判重复
+    return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", (s or "").lower())[:40]
 
 
 def job_key(job: Job) -> str:
