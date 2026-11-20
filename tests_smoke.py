@@ -16,7 +16,8 @@ CHECKS = [
     ("plan show", [sys.executable, "cli.py", "plan", "--show"], "keywords"),
     ("next scoring", [sys.executable, "cli.py", "next", "--limit", "3"], "]"),
     ("gate seed+dup", [sys.executable, "-c",
-        "import sys; sys.path.insert(0,'.'); import db; db.init_db();"
+        "import sys; sys.path.insert(0,'.'); import tempfile,os; "
+        "os.environ['KIWIAPPLY_DATA']=tempfile.mkdtemp(prefix='kws-'); import db; db.init_db(); "
         "db.record_application({'id':'SMOKE-1','channel':'seek','title':'t','company':'c'},'sent','X'); "
         "import subprocess; r=subprocess.run([sys.executable,'cli.py','gate','SMOKE-1','--channel','seek'],capture_output=True,text=True); "
         "sys.exit(0 if 'DUP' in r.stdout and r.returncode==2 else 1)"], ""),

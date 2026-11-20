@@ -1,17 +1,32 @@
 """本地 SQLite 存储层 —— 所有数据只存 data/kiwiapply.db，绝不联网。"""
 from __future__ import annotations
 import json
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-DATA = Path(__file__).parent / "data"
-DB = DATA / "kiwiapply.db"
+DEFAULT_DATA = Path(__file__).parent / "data"
+
+
+def data_dir() -> Path:
+    """运行时解析存储目录：KIWIAPPLY_DATA 可覆盖（测试隔离用，绝不写进真实库）。"""
+    return Path(os.environ.get("KIWIAPPLY_DATA") or DEFAULT_DATA)
+
+
+def db_path() -> Path:
+    return data_dir() / "kiwiapply.db"
+
+
+# 兼容旧引用（模块级默认值）
+DATA = DEFAULT_DATA
+DB = DEFAULT_DATA / "kiwiapply.db"
 
 
 def conn() -> sqlite3.Connection:
-    DATA.mkdir(exist_ok=True)
-    c = sqlite3.connect(DB)
+    d, f = data_dir(), db_path()
+    d.mkdir(parents=True, exist_ok=True)
+    c = sqlite3.connect(f)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA journal_mode=WAL")
     return c
@@ -91,11 +106,14 @@ def set_job_status(job_id: str, channel: str, status: str) -> None:
         c.execute("UPDATE jobs SET status=? WHERE id=? AND channel=?", (status, job_id, channel))
 
 
-def record_application(job: dict, result: str, confirmation: str = "", note: str = "") -> None:
+def record_application(job: dict, result: str, confirmation: str = "", note: str = "",
+                       applied_at: str = "") -> None:
+    """applied_at 留空则用当前时间；从历史台账导入时必须传真实投递日期。"""
     with conn() as c:
         c.execute("""INSERT INTO applications(job_id,job_channel,job_title,job_company,result,confirmation,note,applied_at)
             VALUES(?,?,?,?,?,?,?,?)""",
-            (job.get("id"), job.get("channel"), job.get("title"), job.get("company"), result, confirmation, note, now()))
+            (job.get("id"), job.get("channel"), job.get("title"), job.get("company"),
+             result, confirmation, note, applied_at or now()))
         c.execute("UPDATE jobs SET status=? WHERE id=? AND channel=?",
                   ("applied" if result == "sent" else "blocked", str(job.get("id")), job.get("channel")))
 
@@ -110,7 +128,7 @@ def stats() -> dict:
 
 
 def save_cv(role_type: str, filename: str, content: bytes) -> str:
-    up = DATA / "uploads"
+    up = data_dir() / "uploads"
     up.mkdir(exist_ok=True)
     safe = f"{role_type}_{filename}".replace("/", "_")
     (up / safe).write_bytes(content)

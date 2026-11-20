@@ -155,15 +155,39 @@ def cmd_record(a):
     print(f"recorded: {a.result}")
 
 
+
+def cmd_import_ledger(a):
+    """把外部 markdown 投递台账吸收进 DB，让 gate 查重对历史记录生效。"""
+    from match.ledger_import import import_ledger
+    from pathlib import Path
+    paths = []
+    if a.files:
+        paths = [Path(f) for f in a.files]
+    else:
+        for d in a.dirs or [Path(__file__).resolve().parent.parent / "job-applications"]:
+            paths.extend(sorted(Path(d).glob("APPLIED_*.md")))
+    if not paths:
+        print("no ledger files found (use --dirs or --files)"); sys.exit(1)
+    res = import_ledger(paths, dry_run=a.dry_run)
+    tag = "DRY-RUN" if a.dry_run else "IMPORTED"
+    print(f"{tag}: parsed={res['parsed']} added={res['added']} "
+          f"updated={res['updated']} skipped_existing={res['skipped_existing']}")
+    for line in res["details"][:a.show]:
+        print(line)
+    if len(res["details"]) > a.show:
+        print(f"  ... {len(res['details']) - a.show} more")
+
 def cmd_next(a):
     _db.init_db()
     plan = _load_plan()
     kws = [k.lower() for k in plan.get("keywords", [])] + [t.lower() for t in plan.get("tracks", [])]
     scored = []
     excl = [e.lower() for e in plan.get("exclude_employers", [])]
+    n_excluded = 0
     for j in _db.jobs_list(status="new", limit=500):
         comp = (j["company"] or "").lower()
         if any(e.split(" (")[0] in comp for e in excl):
+            n_excluded += 1
             continue
         text = (j["title"] + " " + (j["description"] or "") + " " + comp).lower()
         score = sum(1 for k in kws if k.split()[0] in text)
@@ -173,6 +197,10 @@ def cmd_next(a):
             score += 2   # 特教/留学生加权
         scored.append((score, j))
     scored.sort(key=lambda x: -x[0])
+    if excl:
+        print(f"(exclude_employers 生效：{len(excl)} 条规则，本次过滤掉 {n_excluded} 个岗位)")
+    elif not plan.get("exclude_employers", None) and plan.get("keywords"):
+        print("⚠️ plan 里没有 exclude_employers 字段——若有硬性不投的雇主，请用 cli.py plan --json 补上")
     for s, j in scored[:a.limit]:
         print(f"[{s:>2}] {j['channel']}#{j['id']} | {j['title'][:52]} | {j['company'][:26]} | {j['salary'][:16]}")
 
@@ -264,6 +292,9 @@ def main() -> None:
     le = sub.add_parser("lessons"); le.add_argument("--add", default=""); le.add_argument("--add-kind", default=""); le.set_defaults(func=cmd_lessons)
     rv = sub.add_parser("review"); rv.set_defaults(func=cmd_review)
     cv = sub.add_parser("cv"); cv.add_argument("--add", nargs=2, metavar=("ROLE_TYPE", "PDF_PATH")); cv.set_defaults(func=cmd_cv)
+    il = sub.add_parser("import-ledger"); il.add_argument("--files", nargs="*", default=[])
+    il.add_argument("--dirs", nargs="*", default=[]); il.add_argument("--dry-run", action="store_true")
+    il.add_argument("--show", type=int, default=60); il.set_defaults(func=cmd_import_ledger)
     at = sub.add_parser("ats"); at.add_argument("job_id", nargs="?"); at.add_argument("--channel", default="seek"); at.add_argument("--url", default=""); at.set_defaults(func=cmd_ats)
     s = sub.add_parser("scan")
     s.add_argument("--keywords", default="")

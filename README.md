@@ -104,3 +104,32 @@ profile.example/  脱敏答案映射模板
 ## License
 
 MIT © 2026 —— 感谢 [JobSpy](https://github.com/speedyapply/JobSpy) 与 [AIHawk](https://github.com/feder-cr/Jobs_Applier_AI_Agent) 的开源启发。
+
+## 台账与查重（重要）
+
+投递记录有两个来源：工具自己的 `record`，以及外部 markdown 台账。`gate` 查重只读 SQLite，
+所以历史台账必须先吸收进来，否则已投岗位会被误判 PASS：
+
+```bash
+python3 cli.py import-ledger --dry-run   # 先看会导入什么
+python3 cli.py import-ledger             # 幂等，可反复执行
+```
+
+支持表格行（表头驱动列映射）、编号列表、`SEEK #ID` 内联、ATS 链接 ID、`#ID` 形态；
+投递日期取所在小节标题里的日期（不是导入时间），回音率统计才准。
+
+## 晨扫：采集与播报解耦
+
+```bash
+python3 morning.py --days 2 --limit 10 --quiet   # 纯 Python，无 agent / 无浏览器依赖
+```
+
+结果写 `data/morning-YYYY-MM-DD.md`。推荐用 macOS launchd 每天定时跑（不依赖任何
+agent 连接状态），agent 只负责读文件播报：
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.kiwileap.morning.plist
+```
+
+求职约束写在 `data/plan.json` 的 `exclude_employers`，`cli.py next` 会打印过滤掉多少条
+（过滤必须可见，静默失效等于没生效）。
