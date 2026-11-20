@@ -28,20 +28,26 @@ def cmd_scan(args: argparse.Namespace) -> None:
     if not args.where: args.where = plan.get("where", "Auckland")
     if not args.days: args.days = plan.get("days", 1)
     ledger = load_ledger()
+    known = {(r["id"], r["channel"]) for r in
+             _db.conn().execute("SELECT id,channel FROM jobs")}
     all_fresh = []
     terms = [args.keywords] if args.keywords else _load_plan().get("keywords", SEEK_DEFAULT_TERMS)
     if args.channel in ("seek", "all"):
         for kw in terms:
             jobs = seek_scan(kw, where=args.where, days=args.days, max_jobs=args.max)
             fresh, dup = filter_new(jobs, ledger)
-            all_fresh.extend(fresh)
-            print(f"[seek] {kw!r}: {len(jobs)} 条，新 {len(fresh)}（去重 {len(dup)}）")
+            unseen = [j for j in fresh if (str(j.id), j.channel) not in known]
+            all_fresh.extend(unseen)
+            print(f"[seek] {kw!r}: 命中 {len(jobs)}，DB 未见 {len(unseen)}"
+                  f"（已在库 {len(fresh) - len(unseen)}，ledger 去重 {len(dup)}）")
     if args.channel in ("skykiwi", "all"):
         for type_name, tid in TYPEIDS.items():
             jobs = skykiwi_scan(typeid=tid, days=args.days, max_jobs=args.max)
             fresh, dup = filter_new(jobs, ledger)
-            all_fresh.extend(fresh)
-            print(f"[skykiwi] {type_name}: {len(jobs)} 帖，新 {len(fresh)}（去重 {len(dup)}）")
+            unseen = [j for j in fresh if (str(j.id), j.channel) not in known]
+            all_fresh.extend(unseen)
+            print(f"[skykiwi] {type_name}: 命中 {len(jobs)}，DB 未见 {len(unseen)}"
+                  f"（已在库 {len(fresh) - len(unseen)}，ledger 去重 {len(dup)}）")
     if args.channel in ("trademe", "all"):
         print("[trademe] 浏览器渠道：请由 agent 执行 scan/trademe.py EXTRACT_JS 后喂 parse_browser_payload")
     if args.channel in ("indeed", "all"):

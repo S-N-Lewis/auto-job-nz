@@ -83,6 +83,15 @@ def ranked(limit: int = 20) -> list[dict]:
     return out
 
 
+def prior_outcome(jid: str, channel: str) -> dict | None:
+    """查该岗位以往的处理结果（blocked 尤其重要：别再当新岗推）。"""
+    with _db.conn() as c:
+        r = c.execute("SELECT result,note FROM applications "
+                      "WHERE job_id=? AND job_channel=? ORDER BY id DESC LIMIT 1",
+                      (str(jid), channel)).fetchone()
+    return dict(r) if r else None
+
+
 def enrich(cands: list[dict]) -> list[dict]:
     """cli.py next 只给 4 个字段，其余从 DB 补齐（报告需要地点与链接）。"""
     with _db.conn() as c:
@@ -96,6 +105,7 @@ def enrich(cands: list[dict]) -> list[dict]:
             j.setdefault("location", "")
             j.setdefault("url", "")
             j.setdefault("snippet", "")
+            j["prior"] = prior_outcome(j["id"], j["channel"])
     return cands
 
 
@@ -148,7 +158,7 @@ def build_report(days: int, scan_out: dict, cands: list[dict],
           f"- **本次真实入库 {real_new} 条**"
           + ("（" + " + ".join(f"{k} {v}" for k, v in added.items() if v is not None) + "）" if added else ""),
           f"- 库内共 {total} 条岗位（今天首次见到 {today_in} 条）；历史已投 **{applied}** 条，受阻 {blocked} 条",
-          f"- 说明：scan 每关键词的「新 N」按 ledger.jsonl 去重，可能虚高；入库数以 DB 为准", ""]
+          f"- 每关键词报「DB 未见 N」= 库里从没见过的岗位数（去重以 DB 为准，不是 ledger.jsonl）", ""]
 
     for ch in ("seek", "skykiwi"):
         if scan_out.get(ch):
@@ -164,8 +174,14 @@ def build_report(days: int, scan_out: dict, cands: list[dict],
         L.append("（无新候选，或全部命中查重）")
     for i, j in enumerate(cands, 1):
         loc = f"（{j['location'][:22]}）" if j.get("location") else ""
+        prior = j.get("prior") or {}
+        flag = ""
+        if prior.get("result") == "blocked":
+            flag = " ⚠️**曾放弃**"
         L.append(f"{i}. **[score {j['score']}] {j['title'][:60]}** — {j['company'][:30]}{loc}"
-                 f"｜{j['channel']}#{j['id']}")
+                 f"｜{j['channel']}#{j['id']}{flag}")
+        if flag:
+            L.append(f"   - ⚠️ 以往处理：blocked — {prior.get('note', '')[:120]}")
         if j.get("salary"):
             L.append(f"   - 薪资：{j['salary']}")
         L.append(f"   - ATS：{ats_for(j)}")
