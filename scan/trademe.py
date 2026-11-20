@@ -71,7 +71,10 @@ TIME_RE = (r"(?:Listed\s+)?(?:\d+\s*(?:minutes?|hours?|days?|weeks?)\s+ago"
 AREA_RE = (r"([A-Z][\w&,\' -]{2,40}?(?:"
            r"Auckland|Wellington|Christchurch|Manukau City|Franklin|Rodney|"
            r"North Shore|Waitakere|Papakura|Albany|Peninsula|Northland|Hamilton|Tauranga))")
-SALARY_RE = re.compile(r"\$\d[\d,.]+(?:\s*(?:an?|per)\s*(?:hour|week|year|annum|hr|wk))?")
+SALARY_RE = re.compile(
+    r"\$\d[\d,.]+\s*[KkMm]?"                                  # $70K / $27.95
+    r"(?:\s*(?:-|–|to)\s*\$\d[\d,.]+\s*[KkMm]?)?"            # - $90K
+    r"(?:\s*(?:an?|per)\s*(?:hour|week|year|annum|hr|wk|day|month))?")
 
 
 def parse_browser_payload(rows: list[dict], category: str, region: str = "Auckland") -> list[Job]:
@@ -114,6 +117,97 @@ def parse_browser_payload(rows: list[dict], category: str, region: str = "Auckla
             extra={"category": category},
         ))
     return jobs
+
+
+# 单分类浏览器脚本：一次只开一个标签，成败都 close()。
+# 绝不在这段 JS 里循环多个分类 —— 那正是 2026-11-21 卡死事故的根因。
+ONE_CATEGORY_JS = """
+const cat = %s;
+try {
+  await page.goto('https://www.trademe.co.nz/a/jobs/' + cat + '/auckland',
+                  {waitUntil: 'domcontentloaded', timeout: 60000});
+  await page.waitForTimeout(4500);
+  const rows = await page.evaluate(() => {
+    const out = {};
+    const idOf = (href) => {
+      const i = href.indexOf('/listing/');
+      if (i < 0) return '';
+      const d = href.slice(i + 9).replace(/[^0-9]/g, '');
+      return d.length >= 9 ? d.slice(0, 10) : '';
+    };
+    for (const a of document.querySelectorAll('a[href]')) {
+      const href = a.getAttribute('href') || '', id = idOf(href);
+      if (!id || out[id]) continue;
+      out[id] = { id, title: (a.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 200),
+                  url: 'https://www.trademe.co.nz' + href.split('?')[0] };
+    }
+    return Object.values(out);
+  });
+  // 每行一条：整数组一次输出会撞上 console 长度上限被截断
+  for (const row of rows) console.log('TMROW|' + JSON.stringify(row));
+  console.log('TMDONE|' + rows.length);
+} finally {
+  await page.close().catch(() => {});
+}
+"""
+
+
+def scan_one_category(category: str, timeout: int = 90) -> list[Job]:
+    """扫一个分类。调用方负责逐个串行调用，避免同时开多个标签。"""
+    from scan.browser import run_js, tagged
+    from scan.browser import BrowserUnavailable  # noqa: F401  由调用方捕获
+    js = ONE_CATEGORY_JS % json.dumps(category)
+    stdout = run_js(js, timeout=timeout)
+    rows: list[dict] = []
+    bad = 0
+    for payload in tagged(stdout, "TMROW|"):
+        try:
+            rows.append(json.loads(payload))
+        except json.JSONDecodeError:
+            bad += 1
+    if bad:
+        rows_note = f"（{bad} 行解析失败）"
+    jobs = parse_browser_payload(rows, category)
+    if not jobs:
+        done = tagged(stdout, "TMDONE|")
+        raise RuntimeError(
+            f"{category}: 提取 0 条（页面行数 {done[0] if done else '?'}，"
+            f"解析失败 {bad}）")
+    return jobs
+
+
+def scan_browser(categories: list[str] | None = None, budget: int = 150) -> dict:
+    """串行扫多分类，带全局时间预算；单个失败不影响其余。
+
+    返回 {分类: [Job]}，另有 "_status" 说明跳过/失败/超预算情况。
+    """
+    import time as _t
+    from scan.browser import BrowserUnavailable
+    cats = categories or CATEGORIES
+    out: dict = {"_status": []}
+    t0 = _t.time()
+    for c in cats:
+        if _t.time() - t0 > budget:
+            out["_status"].append(f"{c}: 未扫（时间预算 {budget}s 用尽）")
+            continue
+        try:
+            jobs = scan_one_category(c, timeout=min(90, int(budget - (_t.time() - t0)) + 20))
+            out[c] = jobs
+            if not jobs:
+                out["_status"].append(f"{c}: 提取 0 条（分类可能无岗位或页面未渲染）")
+        except BrowserUnavailable as e:
+            out[c] = []
+            out["_status"].append(f"{c}: 跳过 — {str(e)[:90]}")
+            # 内存/连接类问题对后续分类同样成立，不再白试
+            rest = cats[cats.index(c) + 1:]
+            for r in rest:
+                out[r] = []
+                out["_status"].append(f"{r}: 未扫（同上原因）")
+            break
+        except Exception as e:
+            out[c] = []
+            out["_status"].append(f"{c}: 失败 {type(e).__name__}: {str(e)[:80]}")
+    return out
 
 
 if __name__ == "__main__":
