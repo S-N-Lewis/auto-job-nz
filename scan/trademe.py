@@ -19,7 +19,11 @@ except ImportError:  # 直接 python3 scan/xxx.py 运行时无包上下文
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 BASE = "https://www.trademe.co.nz/a/jobs"
-CATEGORIES = ["customer-service", "administration", "retail", "hospitality-tourism"]
+# slug 必须是 Trade Me 真实存在的分类（2026-11-21 实测 /a/jobs/administration/auckland
+# 返回 404 "The page you requested was not found"；真实 slug 是 office-administration）。
+# 全部 39 个真实分类可从 /a/jobs 首页 a[href*="/a/jobs/"] 抓取。
+CATEGORIES = ["office-administration", "customer-service", "education",
+              "hospitality-tourism"]
 
 
 class BrowserRequired(RuntimeError):
