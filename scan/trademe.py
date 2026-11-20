@@ -66,26 +66,51 @@ def probe(category: str = "customer-service", region: str = "auckland") -> None:
     return ids
 
 
+TIME_RE = (r"(?:Listed\s+)?(?:\d+\s*(?:minutes?|hours?|days?|weeks?)\s+ago"
+           r"|yesterday|today|Just now)")
+AREA_RE = (r"([A-Z][\w&,\' -]{2,40}?(?:"
+           r"Auckland|Wellington|Christchurch|Manukau City|Franklin|Rodney|"
+           r"North Shore|Waitakere|Papakura|Albany|Peninsula|Northland|Hamilton|Tauranga))")
+SALARY_RE = re.compile(r"\$\d[\d,.]+(?:\s*(?:an?|per)\s*(?:hour|week|year|annum|hr|wk))?")
+
+
 def parse_browser_payload(rows: list[dict], category: str, region: str = "Auckland") -> list[Job]:
-    """把浏览器通道返回的行转成统一 Job。"""
+    """把浏览器通道返回的卡片文本拆成统一 Job。
+
+    Trade Me 卡片整段挤在锚点 innerText 里，实测形态：
+      "Night Shift Administrator Listed yesterday Manukau City, Auckland <描述…>"
+      "Customer Service - Portables 4 days ago Auckland City, Auckland <描述…>"
+    公司名卡片不给，留空（详情页/enrich 再补）；描述填进 description 供打分用。
+    """
     jobs: list[Job] = []
     for r in rows:
         text = re.sub(r"\s+", " ", (r.get("title") or "")).strip()
         if not text:
             continue
-        # 卡片文本模式："标题 N days/hours ago 地点, 区域 描述…"
-        m = re.search(r"(.*?)\s+(\d+\s*(?:minutes?|hours?|days?|weeks?)\s+ago)\s+([A-Z][\w&,\' -]{2,40}?(?:Auckland|Wellington|Christchurch))", text)
-        if m:
-            title, listed, loc = m.group(1).strip(), m.group(2), m.group(3)
+        title, listed, loc, rest = text[:90], "", region, ""
+        m_area = re.search(TIME_RE + r"\s+" + AREA_RE, text, re.I)
+        if m_area:
+            title = text[:m_area.start()].strip() or title
+            tm = re.search(TIME_RE, text[m_area.start():m_area.end()], re.I)
+            listed = tm.group(0).strip() if tm else ""
+            loc = m_area.group(1).strip()
+            rest = text[m_area.end():].strip()
         else:
-            title, listed, loc = text[:80], "", region
-        sm = re.search(r"\$\d[\d,.]+(?:\s*(?:an?|per)\s*(?:hour|week|year|annum))?", text)
+            m_t = re.search(TIME_RE, text, re.I)
+            if m_t:
+                title = text[:m_t.start()].strip() or title
+                listed = m_t.group(0).strip()
+                rest = text[m_t.end():].strip()
+            # 无时间戳的卡片多半是推广位/非常规卡，保持原样，
+            # 不做宽泛地点匹配（实测会把 "Customer Service Administrator Rodney, Auckland"
+            # 从中间切坏成 title="Customer" loc="Service Administrator Rodney"）
+        sm = SALARY_RE.search(text)
         jobs.append(Job(
             id=str(r["id"]), channel="trademe",
             title=title[:120], company="", location=loc or region,
-            url=r.get("url", ""),
-            listed=listed,
+            url=r.get("url", ""), listed=listed,
             salary=sm.group(0) if sm else "",
+            description=rest[:1500],
             extra={"category": category},
         ))
     return jobs
