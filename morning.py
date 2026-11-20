@@ -50,8 +50,7 @@ def scan_channels(days: int) -> dict:
     而 ledger.jsonl 可能不存在（历史投递记录在 DB applications 表里）。
     真实入库数以 DB 的 INSERT OR IGNORE 计数为准，这里单独提取。
     """
-    out = {"seek": "", "skykiwi": "", "trademe": "skipped (需要浏览器/agent)",
-           "indeed": "skipped (需要浏览器/agent)", "added": {}}
+    out = {"seek": "", "skykiwi": "", "trademe": "", "indeed": "", "added": {}}
     for ch in ("seek", "skykiwi"):
         rc, txt = _run([sys.executable, "cli.py", "scan", "--channel", ch,
                         "--days", str(days)], timeout=240)
@@ -61,6 +60,36 @@ def scan_channels(days: int) -> dict:
         out[ch] = txt.strip()
         m = DB_ADDED.search(txt)
         out["added"][ch] = int(m.group(1)) if m else None
+
+    # TradeMe：真实浏览器通道，串行单标签（并发多标签曾把 8GB 机器打卡死）
+    out["added"]["trademe"] = 0
+    try:
+        import time as _t
+        from scan.browser import BrowserUnavailable
+        from scan.trademe import CATEGORIES, scan_one_category
+        _db.init_db()
+        lines, total, t0 = [], 0, _t.time()
+        for c in CATEGORIES:
+            if _t.time() - t0 > 120:
+                lines.append(f"{c}: 未扫（时间预算用尽）")
+                continue
+            try:
+                jobs = scan_one_category(c, timeout=75)
+                n = _db.upsert_jobs([j.to_dict() for j in jobs]) if jobs else 0
+                total += n
+                lines.append(f"{c}: 提取 {len(jobs)}，DB 未见 {n}")
+            except BrowserUnavailable as e:
+                lines.append(f"浏览器不可用 — {str(e)[:70]}（其余分类跳过）")
+                break
+            except Exception as e:
+                lines.append(f"{c}: 失败 {type(e).__name__} {str(e)[:60]}")
+        out["trademe"] = "\n".join(lines) + f"\n[db] 入库新增 {total} 条"
+        out["added"]["trademe"] = total
+    except Exception as e:
+        out["trademe"] = f"skipped — {type(e).__name__}: {str(e)[:80]}"
+
+    out["added"]["indeed"] = 0
+    out["indeed"] = "skipped (需 agent 侧浏览器补扫)"
     return out
 
 
@@ -154,7 +183,9 @@ def build_report(days: int, scan_out: dict, cands: list[dict],
                             (datetime.now().strftime("%Y-%m-%d"),)).fetchone()["n"]
     added = scan_out.get("added", {})
     real_new = sum(v for v in added.values() if v is not None) if added else 0
-    L += [f"- 通道：SEEK / 天维 走 API；TradeMe / Indeed 需 agent 浏览器（本次跳过）",
+    tmv = str(scan_out.get("trademe", ""))
+    tm_state = "已扫" if ("入库新增" in tmv or "提取" in tmv) else ("跳过" if tmv.startswith("skipped") else "失败")
+    L += [f"- 通道：SEEK / 天维 走 API；TradeMe 走真实浏览器单标签串行（{tm_state}）；Indeed 需 agent 侧补扫",
           f"- **本次真实入库 {real_new} 条**"
           + ("（" + " + ".join(f"{k} {v}" for k, v in added.items() if v is not None) + "）" if added else ""),
           f"- 库内共 {total} 条岗位（今天首次见到 {today_in} 条）；历史已投 **{applied}** 条，受阻 {blocked} 条",
@@ -167,7 +198,10 @@ def build_report(days: int, scan_out: dict, cands: list[dict],
                 L.append(f"- {line}")
             L.append("")
     for ch in ("trademe", "indeed"):
-        L.append(f"**[{ch}]** {scan_out.get(ch, 'skipped')}")
+        v = str(scan_out.get(ch, "skipped"))
+        tm_state = "已扫" if ("入库新增" in v or "提取" in v) else ("跳过" if v.startswith("skipped") else "失败")
+        L.append(f"**[{ch}]**" + ("" if ch != "trademe" else f"（{tm_state}）"))
+        L += [f"- {ln}" for ln in v.splitlines()]
 
     L += ["", "## 推荐候选（已过 gate 查重）", ""]
     if not cands:

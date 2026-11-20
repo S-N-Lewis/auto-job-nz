@@ -66,6 +66,26 @@ def probe(category: str = "customer-service", region: str = "auckland") -> None:
     return ids
 
 
+BRANDS = (
+    "BestStart", "Kidicare", "KPMG", "Deloitte", "Stantec", "Fonterra", "Air New Zealand",
+    "Countdown", "Woolworths", "PaknSave", "Noel Leeming", "Harvey Norman", "The Warehouse",
+    "Smiths City", "JB Hi-Fi", "McDonald", "Zespri", "Villa Maria", "InterGroup", "TLC",
+    "Hertz", "Suzuki", "Toyota", "MG Motor", "Toyota of Auckland", "ASB", "BNZ", "ANZ",
+    "Westpac", "Kiwibank", "Gen-i", "Vector", "Unison", "OneRoof", "Fletcher", "Downer",
+    "Johnston", "Crazy Kidz", "Learn 'N' Play", "Owlet", "Kea", "Smiling Monkey", "Hoppo",
+)
+
+
+def _guess_company(text: str) -> str:
+    """Trade Me 卡片不给公司名，只能从标题/摘要里认已知品牌；认不出就留空。
+    留空比猜错好——猜错会污染查重 key（gate 按 company|title 判同）。"""
+    low = (text or "").lower()
+    for b in BRANDS:
+        if b.lower() in low:
+            return b
+    return ""
+
+
 TIME_RE = (r"(?:Listed\s+)?(?:\d+\s*(?:minutes?|hours?|days?|weeks?)\s+ago"
            r"|yesterday|today|Just now)")
 AREA_RE = (r"([A-Z][\w&,\' -]{2,40}?(?:"
@@ -110,7 +130,7 @@ def parse_browser_payload(rows: list[dict], category: str, region: str = "Auckla
         sm = SALARY_RE.search(text)
         jobs.append(Job(
             id=str(r["id"]), channel="trademe",
-            title=title[:120], company="", location=loc or region,
+            title=title[:120], company=_guess_company(text), location=loc or region,
             url=r.get("url", ""), listed=listed,
             salary=sm.group(0) if sm else "",
             description=rest[:1500],
