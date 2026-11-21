@@ -184,7 +184,12 @@ def build_report(days: int, scan_out: dict, cands: list[dict],
     added = scan_out.get("added", {})
     real_new = sum(v for v in added.values() if v is not None) if added else 0
     tmv = str(scan_out.get("trademe", ""))
-    tm_state = "已扫" if ("入库新增" in tmv or "提取" in tmv) else ("跳过" if tmv.startswith("skipped") else "失败")
+    if "提取" in tmv and "浏览器不可用" not in tmv:
+        tm_state = "已扫"
+    elif "浏览器不可用" in tmv or tmv.startswith("skipped"):
+        tm_state = "未扫（默认关闭）"
+    else:
+        tm_state = "失败"
     L += [f"- 通道：SEEK / 天维 走 API；TradeMe 走真实浏览器单标签串行（{tm_state}）；Indeed 需 agent 侧补扫",
           f"- **本次真实入库 {real_new} 条**"
           + ("（" + " + ".join(f"{k} {v}" for k, v in added.items() if v is not None) + "）" if added else ""),
@@ -199,7 +204,12 @@ def build_report(days: int, scan_out: dict, cands: list[dict],
             L.append("")
     for ch in ("trademe", "indeed"):
         v = str(scan_out.get(ch, "skipped"))
-        tm_state = "已扫" if ("入库新增" in v or "提取" in v) else ("跳过" if v.startswith("skipped") else "失败")
+        if "提取" in v and "浏览器不可用" not in v:
+            tm_state = "已扫"
+        elif "浏览器不可用" in v or v.startswith("skipped"):
+            tm_state = "未扫（默认关闭）"
+        else:
+            tm_state = "失败"
         L.append(f"**[{ch}]**" + ("" if ch != "trademe" else f"（{tm_state}）"))
         L += [f"- {ln}" for ln in v.splitlines()]
 
